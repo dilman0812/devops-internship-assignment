@@ -1,8 +1,10 @@
-venv/
-*.pem
-terraform.tfstate
-terraform.tfstate.backup
 .terraform/
-__pycache__/
-node_modules/
+*.tfstate
+*.tfstate.*
+*.pem
 .env
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc

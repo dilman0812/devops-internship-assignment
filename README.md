@@ -1,201 +1,349 @@
 # DevOps Internship Assignment
 
+## Overview
+
+This project implements a distributed inferencing system using AWS infrastructure and the provided quickstart architecture.
+
+The deployment separates API and inference workloads across multiple virtual machines connected through private networking and Remote Procedure Calls (RPC).
+
+The system contains:
+
+- API VM (Public Subnet)
+- Inference VM (Private Subnet)
+- RPC communication layer
+- JSON HTTP API endpoint
+- Infrastructure-as-Code using Terraform
+
+Only the API VM is publicly accessible.
+
+Inference workloads remain isolated inside the private subnet.
+
+---
+
 ## Architecture
 
+```text
 Internet
-↓
-API VM (Public Subnet)
-10.0.1.0/24
+   |
+   v
 
-Components:
-- iii Engine
-- caller-worker
-- HTTP API (:3111)
++--------------------------------+
+| Public Subnet (10.0.1.0/24)   |
+|                                |
+| API VM                         |
+|                                |
+| Components:                    |
+| - iii Engine                   |
+| - caller-worker (TypeScript)  |
+| - HTTP API (:3111)            |
++--------------------------------+
 
-↓
+               |
+               | RPC over Private Network
+               v
 
-Private RPC Communication
++--------------------------------+
+| Private Subnet (10.0.2.0/24)  |
+|                                |
+| Inference VM                   |
+|                                |
+| Components:                    |
+| - inference-worker (Python)   |
+| - Gemma-3-270M GGUF Model     |
+| - Torch + Transformers        |
++--------------------------------+
 
-↓
+VPC CIDR:
 
-Inference VM (Private Subnet)
-10.0.2.0/24
+10.0.0.0/16
+```
 
-Components:
-- inference-worker
-- Gemma-3-270m model
-- Torch + Transformers
+---
 
-Network:
+## Worker Responsibilities
 
-VPC: 10.0.0.0/16
+### caller-worker (TypeScript)
+
+Functions:
+
+- `inference::get_response`
+- `http::run_inference_over_http`
+
+Responsibilities:
+
+- Accept incoming HTTP requests
+- Forward payloads through RPC
+- Return JSON responses
+
+---
+
+### inference-worker (Python)
+
+Function:
+
+- `inference::run_inference`
+
+Responsibilities:
+
+- Load Gemma-3-270M model
+- Process inference requests
+- Return decoded model output
+
+---
+
+## RPC Flow
+
+```text
+POST /v1/chat/completions
+
+        |
+
+        v
+
+http::run_inference_over_http
+
+        |
+
+        v
+
+inference::get_response
+
+        |
+
+        v
+
+RPC Communication
+
+        |
+
+        v
+
+inference::run_inference
+
+        |
+
+        v
+
+Gemma Model
+
+        |
+
+        v
+
+JSON Response
+```
+
+---
+
+## Network Design
+
+VPC:
+
+```
+10.0.0.0/16
+```
 
 Public Subnet:
+
+```
 10.0.1.0/24
+```
 
 Private Subnet:
+
+```
 10.0.2.0/24
+```
 
-Only API VM exposed publicly.
+Security Design:
 
-Inference VM reachable only through VPC private networking.
+- API VM accessible publicly
+- Inference VM not exposed publicly
+- RPC communication restricted to VPC network
+- Security Groups restrict external access
+
+---
+
+## Infrastructure Components
+
+AWS Resources Provisioned:
+
+- VPC
+- Public Subnet
+- Private Subnet
+- Internet Gateway
+- Route Tables
+- Security Groups
+- API VM
+- Inference VM
 
 ---
 
 ## API Example
 
-Request
+Request:
 
 ```bash
 curl -X POST http://API_VM_IP:3111/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
-"messages":[
-{
-"role":"user",
-"content":"Explain DevOps simply"
-}
-]
+  "messages":[
+    {
+      "role":"user",
+      "content":"Explain DevOps simply"
+    }
+  ]
 }'
 ```
 
-Response
+Example Response:
 
 ```json
 {
-"result":"DevOps combines development and operations practices to automate software delivery."
+  "result": "DevOps combines software development and operations practices to automate software delivery and improve deployment reliability."
 }
 ```
 
 ---
 
-## Deployment
+## Deployment Steps
 
-1. Terraform apply
-2. Create VPC
-3. Launch API VM
-4. Launch Inference VM
-5. Install iii
-6. Deploy workers
-7. Start RPC communication
-
----
-
-## Production Hardening
-
-- Add IAM least privilege
-- HTTPS + TLS
-- CloudWatch monitoring
-- Auto Scaling
-- Secrets Manager
-- CI/CD pipeline
-
----
-
-## Scaling 100x Larger Model
-
-- GPU inference nodes
-- Model sharding
-- Load balancer
-- ECS / Kubernetes
-- Autoscaling inference workers# DevOps Internship Assignment
-
-## Architecture
-
-Internet
-↓
-API VM (Public Subnet)
-10.0.1.0/24
-
-Components:
-- iii Engine
-- caller-worker
-- HTTP API (:3111)
-
-↓
-
-Private RPC Communication
-
-↓
-
-Inference VM (Private Subnet)
-10.0.2.0/24
-
-Components:
-- inference-worker
-- Gemma-3-270m model
-- Torch + Transformers
-
-Network:
-
-VPC: 10.0.0.0/16
-
-Public Subnet:
-10.0.1.0/24
-
-Private Subnet:
-10.0.2.0/24
-
-Only API VM exposed publicly.
-
-Inference VM reachable only through VPC private networking.
-
----
-
-## API Example
-
-Request
+### 1. Provision Infrastructure
 
 ```bash
-curl -X POST http://API_VM_IP:3111/v1/chat/completions \
--H "Content-Type: application/json" \
--d '{
-"messages":[
-{
-"role":"user",
-"content":"Explain DevOps simply"
-}
-]
-}'
-```
+terraform init
 
-Response
-
-```json
-{
-"result":"DevOps combines development and operations practices to automate software delivery."
-}
+terraform apply
 ```
 
 ---
 
-## Deployment
+### 2. Configure API VM
 
-1. Terraform apply
-2. Create VPC
-3. Launch API VM
-4. Launch Inference VM
-5. Install iii
-6. Deploy workers
-7. Start RPC communication
+```bash
+./scripts/api_vm_setup.sh
+```
+
+---
+
+### 3. Configure Inference VM
+
+```bash
+./scripts/inference_vm_setup.sh
+```
+
+---
+
+### 4. Start iii Engine
+
+API VM:
+
+```bash
+iii
+```
+
+---
+
+### 5. Start Workers
+
+API VM:
+
+```bash
+npm run dev
+```
+
+Inference VM:
+
+```bash
+python inference_worker.py
+```
+
+---
+
+### 6. Validate Endpoint
+
+```bash
+curl -X POST http://API_VM_IP:3111/v1/chat/completions
+```
 
 ---
 
 ## Production Hardening
 
-- Add IAM least privilege
-- HTTPS + TLS
-- CloudWatch monitoring
+Improvements before production deployment:
+
+- TLS / HTTPS
+- IAM Least Privilege Access
+- CloudWatch Monitoring
+- Health Checks
 - Auto Scaling
 - Secrets Manager
-- CI/CD pipeline
+- Rate Limiting
+- Centralized Logging
+- CI/CD Deployment Pipeline
 
 ---
 
-## Scaling 100x Larger Model
+## Scaling Strategy (100x Larger Model)
+
+For significantly larger models:
 
 - GPU inference nodes
+- Kubernetes orchestration
 - Model sharding
-- Load balancer
-- ECS / Kubernetes
-- Autoscaling inference workers
+- Horizontal autoscaling
+- Load balancing
+- Distributed caching
+- Dedicated inference clusters
+
+---
+
+## Screenshots
+
+Screenshots demonstrating infrastructure deployment are available under:
+
+```
+docs/screenshots/
+```
+
+Included evidence:
+
+- VPC creation
+- Subnet configuration
+- Route tables
+- Internet Gateway
+- API VM deployment
+- Inference VM deployment
+- Security Groups
+- Network isolation proof
+
+---
+
+## Repository Structure
+
+```text
+terraform/
+    Infrastructure as Code
+
+scripts/
+    Deployment automation scripts
+
+docs/
+    Documentation and screenshots
+
+quickstart/
+    Quickstart integration notes
+```
+
+---
+
+## Notes
+
+The architecture follows the assignment requirement of:
+
+- Multiple VM deployment
+- RPC-based worker communication
+- Network isolation
+- JSON HTTP inference endpoint
+- Infrastructure reproducibility
+- Independent scaling of API and inference tiers
